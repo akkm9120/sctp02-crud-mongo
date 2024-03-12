@@ -1,7 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const mongodb = require('mongodb');
-require('dotenv').config();
+
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 
 
 const MongoClient = mongodb.MongoClient;
@@ -11,7 +13,7 @@ const ObjectId = mongodb.ObjectId;
 
 // create the express application
 const app = express();
-
+require('dotenv').config();
 // enable cors
 app.use(cors());
 
@@ -123,10 +125,14 @@ async function main() {
                 dateEnrolled: new Date(dateEnrolled) || new Date()
             };
     
+
             const result = await db.collection("students").insertOne(newStudent);
     
+           
+
+
             res.json({
-                'result': result.ops[0] // Return the newly inserted document
+                'result': result // Return the newly inserted document
             });
         } catch (e) {
             res.status(500);
@@ -180,9 +186,8 @@ async function main() {
                 'result': modifiedStudent
             });
         } catch (e) {
-            res.status(500);
             res.json({
-                'error': e.message
+                'error': e
             });
         }
     });
@@ -199,30 +204,146 @@ async function main() {
     })
 
 
-    app.post("/subjects/:subjectName", async function (req, res) {
-        const subject_name = req.params.subjectName;
-        const newSubject = {
-            subject_name
+    // app.post("/subjects/:subjectName", async function (req, res) {
+    //     const subject_name = req.params.subjectName;
+    //     const newSubject = {
+    //         subject_name
+    //     }
+    //     const result = await db.collection("subjects").insertOne(newSubject);
+
+    //     res.json({
+    //         "result": result
+    //     })
+    // })
+
+    // app.get("/subjects", async function (req, res) {
+    //     const results = await db.collection("subjects").find({}).toArray();
+    //     res.json({
+    //         "subjects": results
+    //     })
+    // })
+
+    // app.delete("/subjects/:subjectName", async function (req, res) {
+    //     const subjecName = req.params.subjectName;
+    //     const id = db.collection()
+    // })>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+    function generateAccessToken(id, email) {
+        // the first arugment of `jwt.sign` is the payload that you want to store
+        // the second argument of `jwt.sign` is the token secret
+        // the third arugment is an option object
+        return jwt.sign({
+            'user_id': id,
+            'email': email
+        }, process.env.TOKEN_SECRET, {
+            'expiresIn':'3d'  // w = weeks, d = days, h = hours, m = minutes, s = seconds
+        });
+    }
+    
+    // this is a middleware function that check if a valid JWT has been provided
+    // a middleware function has three arugments: req, res, next
+    function authenticateWithJWT(req, res, next) {
+        const authHeader = req.headers.authorization;
+        if (authHeader) {
+            const token = authHeader.split(" ")[1];
+            // first argument: the token that I want to verify
+            // second argument: the token secret
+            // third argument: callback function
+            jwt.verify(token, process.env.TOKEN_SECRET, function(err,payload){
+                if (err) {
+                    res.status(400);
+                    return res.json({
+                        'error': err
+                    })
+                } else {
+                    // the JWT is valid, forward request to the route and store the payload in the request
+                    req.payload = payload;
+                    next();
+                }
+            })
+        } else {
+            res.status(400);
+            res.json({
+                'error':'Login required to access this route'
+            })
         }
-        const result = await db.collection("subjects").insertOne(newSubject);
+     
+    
+    }
+    
 
+ // Users sign up and log in
+    // It is very common in RESTFul API to represent a process as a document 
+    // that is created because of said process
+    app.post('/user', async function(req,res){
+
+        // hashing with bcrypt is an async function
+        // bcyrpt.hash takes two argument:
+        // 1. the plaintext that you want to hash
+        // 2. how secure you want it
+        const hashedPassword = await bcrypt.hash(req.body.password, 12);
+        const result = await db.collection('users').insertOne({
+            'email': req.body.email,
+            'password': hashedPassword
+        })
         res.json({
-            "result": result
+            'result': result
         })
     })
 
-    app.get("/subjects", async function (req, res) {
-        const results = await db.collection("subjects").find({}).toArray();
+    // Allow user to log in by providing their email and password
+    app.post('/login', async function(req,res){
+        // 1. Find the user by email address
+        const user = await db.collection('users')
+                        .findOne({
+                            email: req.body.email
+                        });
+
+        
+        // 2. Check if the password matches
+        if (user) {
+            // bcrypt.compare()
+            // - first arugment is the plaintext
+            // - second argument is the hashed version 
+            if (await bcrypt.compare(req.body.password, user.password)) {
+                // valid login - so generate the JWT
+                const token = generateAccessToken(user._id, user.email);
+                res.json({
+                    'token': token
+                })
+            } else {
+                res.status(400);
+                res.json({
+                    'error':'Invalid login credentials'
+                })
+            }
+        } else {
+            res.status(400);
+            return res.json({
+                'error':'Invalid login credentials'
+            })
+        }
+
+        // 3. Generate and send back the JWT (aka access token)
+    });
+
+    // Protected route: client must provide the JWT to access
+    app.get('/profile',authenticateWithJWT, async function(req,res){
+       
         res.json({
-            "subjects": results
+            'message':'success in accessing protected route',
+            'payload': req.payload
         })
     })
 
-    app.delete("/subjects/:subjectName", async function (req, res) {
-        const subjecName = req.params.subjectName;
-        const id = db.collection()
+    app.get('/payment', authenticateWithJWT, async function(req,res){
+        res.json({
+            'message':"accessing protected payment route"
+        })
     })
-}
+}      
+
 
 main();
 
