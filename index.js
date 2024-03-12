@@ -40,14 +40,14 @@ async function main() {
             let criteria = {};
 
             if (req.query.name) {
-                criteria.Name = {
+                criteria.name = {
                     '$regex': req.query.name,
                     '$options': 'i'
                 };
             }
 
             if (req.query.subjects) {
-                criteria.Subjects = {
+                criteria.subjects = {
                     '$in': [req.query.subjects],
                     //  
                 };
@@ -91,6 +91,7 @@ async function main() {
     app.post("/students", async function (req, res) {
         try {
             const { name, age, subjects, dateEnrolled } = req.body;
+          
             if (!name) {
                 res.status(400);
                 res.json({
@@ -98,83 +99,97 @@ async function main() {
                 });
                 return;
             }
-
+    
             if (!age) {
                 res.status(400);
                 res.json({
                     "error": "Age must be provided"
-                })
+                });
                 return;
             }
+    
             if (!subjects || !Array.isArray(subjects)) {
                 res.status(400);
                 res.json({
                     'error': 'Subjects must be provided and must be an array'
-                })
-            }
-          
-            const dateObject = new Date(dateEnrolled);
-            console.log(dateObject)
-            // insert a new document based on what the client has sent
-            const result = await db.ollection("students").insertOne({
-                'Name': name,
-                'Age': age,
-                'Subjects': subjects,
-                'DateEnrolled': dateObject
-            });
-            console.log("Results:", result); // Log the results for debugging
-            res.json({
-                'result': result
-            })
-        } catch (e) {
-            // e will contain the error message
-            res.status(500);
-            // internal server error
-            res.json({
-                'error': e
-            })
-        }
-
-    })
-
-    app.put('/students/:id', async function (req, res) {
-        try {
-            const description = req.body.description;
-            const food = req.body.food;
-            const datetime = req.body.datetime ? new Date(req.body.datetime) : new Date();
-
-            if (!description || !food || !Array.isArray(food)) {
-                res.status(400); // bad request -- the client didn't follow the specifications for our endpoint
-                res.json({
-                    'error': 'Invalid data provided'
                 });
                 return;
             }
-
-            const result = await db.collection("sightings").updateOne({
-                '_id': new ObjectId(req.params.id)
-            }, {
-                '$set': {
-                    'description': description,
-                    'food': food,
-                    'datetime': datetime
-                }
-            })
-
+    
+            const newStudent = {
+                name,
+                age,
+                subjects: subjects.map(subject => ({ _id: new ObjectId(), name: subject })),
+                dateEnrolled: new Date(dateEnrolled) || new Date()
+            };
+    
+            const result = await db.collection("students").insertOne(newStudent);
+    
             res.json({
-                'result': result
-            })
+                'result': result.ops[0] // Return the newly inserted document
+            });
         } catch (e) {
             res.status(500);
             res.json({
-                'error': 'Internal Server Error'
-            })
+                'error': e.message
+            });
         }
-
-    })
+    });
+    
+    app.put('/students/:studentid', async function (req, res) {
+        try {
+            const { name, age, subjects, dateEnrolled } = req.body;
+    
+            if (!name) {
+                res.status(400);
+                res.json({
+                    'error': 'A Name must be provided'
+                });
+                return;
+            }
+    
+            if (!age) {
+                res.status(400);
+                res.json({
+                    "error": "Age must be provided"
+                });
+                return;
+            }
+    
+            if (!subjects || !Array.isArray(subjects)) {
+                res.status(400);
+                res.json({
+                    'error': 'Subjects must be provided and must be an array'
+                });
+                return;
+            }
+    
+            const modifiedStudent = {
+                name,
+                age,
+                subjects: subjects.map(subject => ({ _id: new ObjectId(), name: subject })),
+                dateEnrolled: new Date(dateEnrolled) || new Date()
+            };
+    
+            const result = await db.collection("students").updateOne(
+                { "_id": new ObjectId(req.params.studentid) },
+                { '$set': modifiedStudent }
+            );
+    
+            res.json({
+                'result': modifiedStudent
+            });
+        } catch (e) {
+            res.status(500);
+            res.json({
+                'error': e.message
+            });
+        }
+    });
+    
 
     app.delete('/students/:id', async function (req, res) {
-        await db.collection('sightings').deleteOne({
+        await db.collection('students').deleteOne({
             '_id': new ObjectId(req.params.id)
         });
 
