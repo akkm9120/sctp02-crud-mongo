@@ -171,7 +171,7 @@ async function main() {
                 dateEnrolled: new Date(dateEnrolled) || new Date()
             };
     
-            const result = await db.collection("students").updateOne(
+            await db.collection("students").updateOne(
                 { "_id": new ObjectId(req.params.studentid) },
                 { '$set': modifiedStudent }
             );
